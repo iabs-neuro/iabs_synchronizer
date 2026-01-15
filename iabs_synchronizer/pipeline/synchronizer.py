@@ -200,7 +200,10 @@ class Synchronizer:
 
         # Build synchronization info
         from datetime import datetime
+        from .. import __version__
+
         sync_info = {
+            'synchronizer_version': __version__,
             'sync_timestamp': datetime.now().isoformat(),
             'experiment_name': experiment_name,
             'source_format': 'new' if source_metadata else 'legacy',

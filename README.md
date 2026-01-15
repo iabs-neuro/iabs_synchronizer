@@ -130,7 +130,8 @@ speed = result.aligned_data['speed']                # (timepoints,)
 print(f"FPS: {result.source_metadata.get('fps')}")
 print(f"Session: {result.source_metadata.get('session_name')}")
 
-# Check synchronization info
+# Check synchronization info (includes version tracking)
+print(f"Synchronizer version: {result.sync_info['synchronizer_version']}")  # e.g., '1.0.0'
 print(f"Source format: {result.sync_info['source_format']}")  # 'new' or 'legacy'
 print(f"Timepoints: {result.sync_info['n_timepoints']}")
 ```
@@ -149,7 +150,11 @@ aligned_data, metadata, sync_info = load_aligned_data(
 # Access metadata
 print(f"Original FPS: {metadata['fps']}")
 print(f"CNMF parameters: {metadata['cnmf_params']}")
+
+# Access sync info (includes version for reproducibility)
+print(f"Synchronized with version: {sync_info['synchronizer_version']}")
 print(f"Alignment mode used: {sync_info['alignment_mode']}")
+print(f"Sync timestamp: {sync_info['sync_timestamp']}")
 ```
 
 ### Command Line Interface
@@ -594,7 +599,11 @@ sync_info = data['_sync_info'].item()
 
 print(f"Original FPS: {metadata.get('fps')}")
 print(f"Session: {metadata.get('session_name')}")
+
+# Sync info includes version for reproducibility
+print(f"Synchronized with version: {sync_info.get('synchronizer_version')}")
 print(f"Alignment mode: {sync_info.get('alignment_mode')}")
+print(f"Timestamp: {sync_info.get('sync_timestamp')}")
 ```
 
 ## Configuration Parameters
