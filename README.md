@@ -524,6 +524,31 @@ results = sync.synchronize_all(
 print(f"Successfully synchronized {len(results)} experiments")
 ```
 
+**Auto-discovery with scattered files:**
+
+```python
+# Define where files are scattered
+path_config = {
+    'activity_data': '/mnt/imaging',
+    'behavior_features': '/mnt/behavior',
+    'activity_timeline': '/mnt/timestamps',
+    'behavior_timeline': '/mnt/timestamps',
+    'metadata': '/mnt/metadata'
+}
+
+# Discover experiments across scattered directories
+discovered = sync.discover_experiments(path_config=path_config)
+
+print(f"Found {len(discovered)} experiments in scattered directories")
+
+# Synchronize all discovered experiments
+results = sync.synchronize_all(
+    output_dir='/data/synchronized',
+    path_config=path_config,  # Use same path_config for processing
+    only_complete=True
+)
+```
+
 **Discovery options:**
 - `format='auto'` - Find both modern and legacy (default)
 - `format='new'` - Only find modern format experiments

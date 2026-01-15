@@ -327,9 +327,9 @@ class Synchronizer:
         """
         return self._discovery.list_experiments()
 
-    def discover_experiments(self, format: str = 'auto') -> Dict[str, Dict[str, any]]:
+    def discover_experiments(self, format: str = 'auto', path_config: Optional[Dict[str, str]] = None) -> Dict[str, Dict[str, any]]:
         """
-        Auto-discover experiments in root directory based on file naming patterns.
+        Auto-discover experiments based on file naming patterns.
 
         Supports two formats:
         - 'new': Modern format with _data.npz, _Features.csv, etc.
@@ -349,6 +349,7 @@ class Synchronizer:
 
         Args:
             format: Which format to check ('new', 'legacy', or 'auto')
+            path_config: Optional dict specifying custom paths for scattered files (new format only)
 
         Returns:
             dict: Mapping experiment names to metadata:
@@ -365,8 +366,12 @@ class Synchronizer:
             >>> experiments = sync.discover_experiments()
             >>> for name, info in experiments.items():
             ...     print(f"{name}: {info['format']}, complete={info['complete']}")
+
+            >>> # With scattered files
+            >>> path_config = {'activity_data': '/mnt/imaging', 'behavior_features': '/mnt/behavior'}
+            >>> experiments = sync.discover_experiments(path_config=path_config)
         """
-        return self._discovery.discover_experiments(format=format)
+        return self._discovery.discover_experiments(format=format, path_config=path_config)
 
     def synchronize_all(self,
                        output_dir: str,
@@ -436,9 +441,15 @@ class Synchronizer:
         # Create output directory if needed
         os.makedirs(output_dir, exist_ok=True)
 
+        # Extract path_config from kwargs if present (for discovery)
+        path_config = kwargs.get('path_config', None)
+
         # Discover experiments
-        print(f"Discovering experiments in: {self.root}")
-        discovered = self.discover_experiments(format=format)
+        if path_config:
+            print(f"Discovering experiments in scattered directories...")
+        else:
+            print(f"Discovering experiments in: {self.root}")
+        discovered = self.discover_experiments(format=format, path_config=path_config)
 
         if not discovered:
             print("No experiments found.")
