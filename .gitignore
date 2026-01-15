@@ -1,0 +1,167 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# IDE and development tools
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific: Internal documentation
+IMPLEMENTATION_SUMMARY.md
+PRIORITIES_COMPLETION.md
+LEGACY_LOADER_TEST.md
+TEMPORAL_OVERLAP_FIX.md
+ALIGNMENT_MODES_FIXES.md
+GAP_DETECTION.md
+TEST_RESULTS.md
+MISSING_TIMELINES_TEST_RESULTS.md
+MISSING_TIMELINES_BEHAVIOR.md
+BATCH_SYNCHRONIZATION_GUIDE.md
+PIPELINE_ARCHITECTURE.md
+PATH_CONFIG_FEATURE.md
+GITHUB_PUBLISHING_GUIDE.md
+
+# Example/test scripts (root level only, not tests/ directory)
+test_auto_discover.py
+test_installation.py
+test_path_config.py
+example_batch_sync.py
+example_five_paths.py
+example_scattered_paths.py
+publish_to_github.bat
+
+# Test outputs
+test_output*.npz
+*_aligned.npz
+
+# Data files (test/example data)
+data/
