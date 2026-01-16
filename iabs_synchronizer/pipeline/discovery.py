@@ -28,21 +28,51 @@ def is_valid_session_id(name: str) -> bool:
     return name.count('_') >= 2
 
 
-def extract_session_id(filename: str, suffixes: dict) -> Optional[str]:
+def get_file_suffix(filename: str) -> Optional[str]:
     """
-    Extract session ID from filename by removing known suffix.
+    Extract suffix (everything after first 3 underscore-separated parts).
+
+    Example: '3DM_J19_5D_VT_TS.csv' → 'VT_TS.csv'
+
+    Args:
+        filename: Full filename
+
+    Returns:
+        Suffix string if filename has 4+ parts, None otherwise
+    """
+    parts = filename.split('_', 3)  # Split into max 4 parts
+    if len(parts) == 4:
+        return parts[3]
+    return None
+
+
+def map_suffix_to_file_type(suffix: str, suffixes: dict) -> Optional[str]:
+    """
+    Map a file suffix to its file type.
+
+    Args:
+        suffix: File suffix (e.g., 'VT_TS.csv')
+        suffixes: Dict mapping suffixes to file types
+
+    Returns:
+        File type if suffix recognized, None otherwise
+    """
+    return suffixes.get(suffix)
+
+
+def extract_session_id(filename: str) -> Optional[str]:
+    """
+    Extract session ID from first three underscore-separated parts.
 
     Args:
         filename: Full filename (e.g., 'RT_A04_S01_data.npz')
-        suffixes: Dict mapping suffixes to file types (e.g., {'data.npz': 'activity_data'})
 
     Returns:
-        Session ID if suffix matched (e.g., 'RT_A04_S01'), None otherwise
+        Session ID (e.g., 'RT_A04_S01') if filename has 3+ parts, None otherwise
     """
-    for suffix in suffixes.keys():
-        full_suffix = f'_{suffix}'
-        if filename.endswith(full_suffix):
-            return filename[:-len(full_suffix)]
+    parts = filename.split('_')
+    if len(parts) >= 3:
+        return '_'.join(parts[:3])
     return None
 
 
@@ -164,143 +194,136 @@ class ExperimentDiscovery:
         """
         Discover experiments in new format (_data.npz, _Features.csv, etc.).
 
-        Uses session-ID-first approach:
-        1. Scan files and extract candidate session IDs
-        2. Validate each candidate (2+ underscores)
-        3. For each valid session, check which expected files exist
+        Uses first-three-parts approach:
+        1. Scan files and extract session IDs from first 3 underscore-separated parts
+        2. Extract suffix and map to file type
+        3. Detect duplicate file types per session (raises ValueError)
+        4. Build experiment dict
 
         Args:
             path_config: Optional dict specifying custom paths for each file type
 
         Returns:
             dict: Mapping experiment names to file information
+
+        Raises:
+            ValueError: If duplicate file types found for same session
         """
         experiments = {}
 
-        try:
-            # Use suffixes from config
-            suffixes = NEW_FORMAT_SUFFIXES
+        # Use suffixes from config
+        suffixes = NEW_FORMAT_SUFFIXES
 
-            if path_config is None:
-                # Standard discovery: all files in root directory
-                all_files = [f for f in os.listdir(self.root) if os.path.isfile(os.path.join(self.root, f))]
-                all_files_set = set(all_files)
+        if path_config is None:
+            # Standard discovery: all files in root directory
+            all_files = [f for f in os.listdir(self.root) if os.path.isfile(os.path.join(self.root, f))]
 
-                # Step 1: Extract unique candidate session IDs from all files
-                candidates = set()
-                for filename in all_files:
-                    session_id = extract_session_id(filename, suffixes)
-                    if session_id:
-                        candidates.add(session_id)
+            # Step 1: Build mapping of session_id -> {file_type: filename}
+            # with conflict detection
+            session_files = defaultdict(dict)  # session_id -> {file_type: filename}
 
-                # Step 2: Validate session IDs (2+ underscores)
-                valid_sessions = {s for s in candidates if is_valid_session_id(s)}
+            for filename in all_files:
+                session_id = extract_session_id(filename)
+                if not session_id or not is_valid_session_id(session_id):
+                    continue
 
-                # Step 3: For each valid session, find its files
-                for session_id in valid_sessions:
-                    files = {}
-                    for suffix, file_type in suffixes.items():
-                        expected = f"{session_id}_{suffix}"
-                        if expected in all_files_set:
-                            files[file_type] = expected
+                suffix = get_file_suffix(filename)
+                if not suffix:
+                    continue
 
-                    complete = 'activity_data' in files and 'behavior_features' in files
+                file_type = map_suffix_to_file_type(suffix, suffixes)
+                if not file_type:
+                    continue
 
-                    experiments[session_id] = {
-                        'format': 'new',
-                        'files': files,
-                        'complete': complete,
-                        'has_timelines': ('activity_timeline' in files and 'behavior_timeline' in files),
-                        'has_metadata': ('metadata' in files),
-                        'path': self.root
-                    }
+                # Check for duplicate file type
+                if file_type in session_files[session_id]:
+                    existing = session_files[session_id][file_type]
+                    raise ValueError(
+                        f"Duplicate file type '{file_type}' for session '{session_id}': "
+                        f"'{existing}' and '{filename}'"
+                    )
 
-            else:
-                # Scattered files discovery: scan each directory separately
-                experiments = self._discover_scattered(path_config, suffixes)
+                session_files[session_id][file_type] = filename
 
-        except Exception as e:
-            print(f"Error discovering new format experiments: {e}")
+            # Step 2: Build experiment dict from collected files
+            for session_id, files in session_files.items():
+                complete = 'activity_data' in files and 'behavior_features' in files
+
+                experiments[session_id] = {
+                    'format': 'new',
+                    'files': files,
+                    'complete': complete,
+                    'has_timelines': ('activity_timeline' in files and 'behavior_timeline' in files),
+                    'has_metadata': ('metadata' in files),
+                    'path': self.root
+                }
+
+        else:
+            # Scattered files discovery: folder determines file type
+            experiments = self._discover_scattered(path_config)
 
         return experiments
 
-    def _discover_scattered(self, path_config: Dict[str, str], suffixes: dict) -> Dict[str, Dict[str, any]]:
+    def _discover_scattered(self, path_config: Dict[str, str]) -> Dict[str, Dict[str, any]]:
         """
         Discover experiments with files scattered across multiple directories.
 
-        Uses session-ID-first approach:
-        1. Scan all configured directories to collect candidate session IDs
-        2. Validate each candidate (2+ underscores)
-        3. For each valid session, check which expected files exist
+        Folder determines file type. Each folder in path_config contains ONE type of data.
+        Ambiguity = two files with same 3-part session ID in same folder.
 
         Args:
-            path_config: Dict specifying custom paths for each file type
-            suffixes: Dict mapping file suffixes to their types
+            path_config: Dict specifying custom paths for each file type.
+                        Keys are file types, values are directory paths.
 
         Returns:
             dict: Mapping experiment names to file information
+
+        Raises:
+            ValueError: If two files with same session ID found in same folder
         """
         experiments = {}
+        session_files = defaultdict(dict)  # session_id -> {file_type: filename}
 
-        try:
-            # Step 1: Collect candidate session IDs from all configured directories
-            candidates = set()
-            dir_files = {}  # Cache: directory -> set of filenames
+        for file_type, directory in path_config.items():
+            if not os.path.isdir(directory):
+                continue
 
-            # Get unique directories to scan
-            directories_to_scan = set(path_config.values())
-            directories_to_scan.add(self.root)  # Include root as fallback
+            # Track session IDs seen in THIS directory for ambiguity detection
+            seen_in_dir = {}  # session_id -> filename
 
-            for directory in directories_to_scan:
-                try:
-                    if os.path.isdir(directory):
-                        files = {f for f in os.listdir(directory)
-                                if os.path.isfile(os.path.join(directory, f))}
-                        dir_files[directory] = files
+            for filename in os.listdir(directory):
+                if not os.path.isfile(os.path.join(directory, filename)):
+                    continue
 
-                        # Extract session IDs from files in this directory
-                        for filename in files:
-                            session_id = extract_session_id(filename, suffixes)
-                            if session_id:
-                                candidates.add(session_id)
-                except Exception as e:
-                    print(f"Error scanning directory {directory}: {e}")
+                session_id = extract_session_id(filename)
+                if not session_id or not is_valid_session_id(session_id):
+                    continue
 
-            # Step 2: Validate session IDs (2+ underscores)
-            valid_sessions = {s for s in candidates if is_valid_session_id(s)}
+                # Ambiguity: two files with same session ID in same folder
+                if session_id in seen_in_dir:
+                    raise ValueError(
+                        f"Ambiguous files for session '{session_id}' in {directory}: "
+                        f"'{seen_in_dir[session_id]}' and '{filename}'"
+                    )
 
-            # Step 3: For each valid session, check which files exist
-            for session_id in valid_sessions:
-                files = {}
+                seen_in_dir[session_id] = filename
+                session_files[session_id][file_type] = filename
 
-                for suffix, file_type in suffixes.items():
-                    search_dir = path_config.get(file_type, self.root)
-                    expected_filename = f"{session_id}_{suffix}"
+        # Step 2: Build experiment dict from collected files
+        for session_id, files in session_files.items():
+            if not files:
+                continue
 
-                    # Use cached file list if available, otherwise check directly
-                    if search_dir in dir_files:
-                        if expected_filename in dir_files[search_dir]:
-                            files[file_type] = expected_filename
-                    else:
-                        file_path = os.path.join(search_dir, expected_filename)
-                        if os.path.exists(file_path):
-                            files[file_type] = expected_filename
+            complete = 'activity_data' in files and 'behavior_features' in files
 
-                # Only include sessions that have at least one file
-                if files:
-                    complete = 'activity_data' in files and 'behavior_features' in files
-
-                    experiments[session_id] = {
-                        'format': 'new',
-                        'files': files,
-                        'complete': complete,
-                        'has_timelines': ('activity_timeline' in files and 'behavior_timeline' in files),
-                        'has_metadata': ('metadata' in files),
-                        'path_config': path_config
-                    }
-
-        except Exception as e:
-            print(f"Error discovering scattered experiments: {e}")
+            experiments[session_id] = {
+                'format': 'new',
+                'files': files,
+                'complete': complete,
+                'has_timelines': ('activity_timeline' in files and 'behavior_timeline' in files),
+                'has_metadata': ('metadata' in files),
+                'path_config': path_config
+            }
 
         return experiments
 
