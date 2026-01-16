@@ -26,29 +26,23 @@ from ..config import (
 from ..utils.logging import LogCapture
 
 
-def _is_close(num1: float, num2: float, threshold: Optional[float] = None) -> bool:
+def _is_close(num1: int, num2: int, max_diff: int = 5) -> bool:
     """
-    Check if two numbers are within precision threshold of each other.
+    Check if two lengths are within a small absolute difference.
 
-    Uses relative difference check against ALIGN_PRECISION threshold (default 2%).
-    This allows fuzzy matching for lengths that should be equal but have minor differences.
+    Used for crop mode detection - triggers when lengths differ by less than
+    max_diff frames (default 5).
 
     Args:
-        num1: First number to compare
-        num2: Second number to compare
-        threshold: Optional custom threshold (default: ALIGN_PRECISION from config)
+        num1: First length to compare
+        num2: Second length to compare
+        max_diff: Maximum allowed difference in frames (default: 5)
 
     Returns:
-        bool: True if numbers are within threshold, False otherwise
+        bool: True if difference is less than max_diff, False otherwise
     """
-    if threshold is None:
-        threshold = ALIGN_PRECISION
-
-    delta = np.abs(num1 - num2)
-    if 1.0 * delta / num1 > threshold or 1.0 * delta / num2 > threshold:
-        return False
-    else:
-        return True
+    delta = abs(num1 - num2)
+    return 0 < delta < max_diff
 
 
 def _calculate_temporal_overlap(timeline1: np.ndarray, timeline2: np.ndarray) -> Optional[Tuple[float, float]]:
