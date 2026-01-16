@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "iabs-synchronizer"
-version = "1.0.0"
+version = "1.1.0"
 description = "Neuroscience data synchronization tool for multi-modal recordings"
 readme = "README.md"
 requires-python = ">=3.8"

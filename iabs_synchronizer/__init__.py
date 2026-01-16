@@ -19,7 +19,7 @@ For backward compatibility with notebook code:
     >>> from iabs_synchronizer import read_all_data, filter_data, align_all_data
 """
 
-__version__ = '1.0.0'
+__version__ = '1.1.0'
 __author__ = 'IABS Lab'
 
 # Main public API
