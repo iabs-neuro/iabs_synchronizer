@@ -302,7 +302,12 @@ class SyncResult:
         behavior_frames = None
         behavior_fps = None
 
-        for log_line in self.read_log:
+        # Flatten read_log (may be list of strings or list with one multi-line string)
+        read_log_lines = []
+        for item in self.read_log:
+            read_log_lines.extend(item.split('\n'))
+
+        for log_line in read_log_lines:
             # Parse: "Activity: {n_neurons} neurons x {n_frames} frames"
             if 'Activity:' in log_line and 'neurons x' in log_line:
                 try:
