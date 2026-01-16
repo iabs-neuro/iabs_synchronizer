@@ -5,11 +5,45 @@ This module provides classes for discovering experiments in various formats
 from the file system.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 from collections import defaultdict
 import os
 
 from ..config import NEW_FORMAT_SUFFIXES
+
+
+def is_valid_session_id(name: str) -> bool:
+    """
+    Check if a string is a valid session ID.
+
+    Valid session IDs must have at least 2 underscores (experiment_animal-id_session).
+    Examples: LNOF_J01_1D, RT_A04_S01, NOF_H01_1D_baseline
+
+    Args:
+        name: Candidate session ID string
+
+    Returns:
+        bool: True if valid session ID format
+    """
+    return name.count('_') >= 2
+
+
+def extract_session_id(filename: str, suffixes: dict) -> Optional[str]:
+    """
+    Extract session ID from filename by removing known suffix.
+
+    Args:
+        filename: Full filename (e.g., 'RT_A04_S01_data.npz')
+        suffixes: Dict mapping suffixes to file types (e.g., {'data.npz': 'activity_data'})
+
+    Returns:
+        Session ID if suffix matched (e.g., 'RT_A04_S01'), None otherwise
+    """
+    for suffix in suffixes.keys():
+        full_suffix = f'_{suffix}'
+        if filename.endswith(full_suffix):
+            return filename[:-len(full_suffix)]
+    return None
 
 
 class ExperimentDiscovery:
@@ -130,6 +164,11 @@ class ExperimentDiscovery:
         """
         Discover experiments in new format (_data.npz, _Features.csv, etc.).
 
+        Uses session-ID-first approach:
+        1. Scan files and extract candidate session IDs
+        2. Validate each candidate (2+ underscores)
+        3. For each valid session, check which expected files exist
+
         Args:
             path_config: Optional dict specifying custom paths for each file type
 
@@ -145,26 +184,29 @@ class ExperimentDiscovery:
             if path_config is None:
                 # Standard discovery: all files in root directory
                 all_files = [f for f in os.listdir(self.root) if os.path.isfile(os.path.join(self.root, f))]
+                all_files_set = set(all_files)
 
-                # Group files by experiment name
-                exp_files = defaultdict(dict)
-
+                # Step 1: Extract unique candidate session IDs from all files
+                candidates = set()
                 for filename in all_files:
-                    # Check each known suffix
+                    session_id = extract_session_id(filename, suffixes)
+                    if session_id:
+                        candidates.add(session_id)
+
+                # Step 2: Validate session IDs (2+ underscores)
+                valid_sessions = {s for s in candidates if is_valid_session_id(s)}
+
+                # Step 3: For each valid session, find its files
+                for session_id in valid_sessions:
+                    files = {}
                     for suffix, file_type in suffixes.items():
-                        if filename.endswith(f'_{suffix}'):
-                            # Extract experiment name
-                            exp_name = filename[:-len(f'_{suffix}')]
+                        expected = f"{session_id}_{suffix}"
+                        if expected in all_files_set:
+                            files[file_type] = expected
 
-                            # Validate naming convention (at least 2 underscores)
-                            if exp_name.count('_') >= 2:
-                                exp_files[exp_name][file_type] = filename
+                    complete = 'activity_data' in files and 'behavior_features' in files
 
-                # Build experiment info
-                for exp_name, files in exp_files.items():
-                    complete = ('activity_data' in files and 'behavior_features' in files)
-
-                    experiments[exp_name] = {
+                    experiments[session_id] = {
                         'format': 'new',
                         'files': files,
                         'complete': complete,
@@ -175,52 +217,90 @@ class ExperimentDiscovery:
 
             else:
                 # Scattered files discovery: scan each directory separately
-                # Step 1: Get experiment names from activity_data directory (required files)
-                activity_dir = path_config.get('activity_data', self.root)
-                activity_suffix = [s for s, t in suffixes.items() if t == 'activity_data'][0]
-
-                try:
-                    activity_files = [f for f in os.listdir(activity_dir)
-                                     if os.path.isfile(os.path.join(activity_dir, f))
-                                     and f.endswith(f'_{activity_suffix}')]
-
-                    # Extract experiment names
-                    exp_names = []
-                    for filename in activity_files:
-                        exp_name = filename[:-len(f'_{activity_suffix}')]
-                        if exp_name.count('_') >= 2:  # Validate naming convention
-                            exp_names.append(exp_name)
-
-                    # Step 2: For each experiment name, check which files exist
-                    for exp_name in exp_names:
-                        files = {}
-
-                        # Check each file type in its respective directory
-                        for suffix, file_type in suffixes.items():
-                            search_dir = path_config.get(file_type, self.root)
-                            expected_filename = f"{exp_name}_{suffix}"
-                            file_path = os.path.join(search_dir, expected_filename)
-
-                            if os.path.exists(file_path):
-                                files[file_type] = expected_filename
-
-                        # Build experiment info
-                        complete = ('activity_data' in files and 'behavior_features' in files)
-
-                        experiments[exp_name] = {
-                            'format': 'new',
-                            'files': files,
-                            'complete': complete,
-                            'has_timelines': ('activity_timeline' in files and 'behavior_timeline' in files),
-                            'has_metadata': ('metadata' in files),
-                            'path_config': path_config  # Store path_config for later use
-                        }
-
-                except Exception as e:
-                    print(f"Error scanning activity_data directory {activity_dir}: {e}")
+                experiments = self._discover_scattered(path_config, suffixes)
 
         except Exception as e:
             print(f"Error discovering new format experiments: {e}")
+
+        return experiments
+
+    def _discover_scattered(self, path_config: Dict[str, str], suffixes: dict) -> Dict[str, Dict[str, any]]:
+        """
+        Discover experiments with files scattered across multiple directories.
+
+        Uses session-ID-first approach:
+        1. Scan all configured directories to collect candidate session IDs
+        2. Validate each candidate (2+ underscores)
+        3. For each valid session, check which expected files exist
+
+        Args:
+            path_config: Dict specifying custom paths for each file type
+            suffixes: Dict mapping file suffixes to their types
+
+        Returns:
+            dict: Mapping experiment names to file information
+        """
+        experiments = {}
+
+        try:
+            # Step 1: Collect candidate session IDs from all configured directories
+            candidates = set()
+            dir_files = {}  # Cache: directory -> set of filenames
+
+            # Get unique directories to scan
+            directories_to_scan = set(path_config.values())
+            directories_to_scan.add(self.root)  # Include root as fallback
+
+            for directory in directories_to_scan:
+                try:
+                    if os.path.isdir(directory):
+                        files = {f for f in os.listdir(directory)
+                                if os.path.isfile(os.path.join(directory, f))}
+                        dir_files[directory] = files
+
+                        # Extract session IDs from files in this directory
+                        for filename in files:
+                            session_id = extract_session_id(filename, suffixes)
+                            if session_id:
+                                candidates.add(session_id)
+                except Exception as e:
+                    print(f"Error scanning directory {directory}: {e}")
+
+            # Step 2: Validate session IDs (2+ underscores)
+            valid_sessions = {s for s in candidates if is_valid_session_id(s)}
+
+            # Step 3: For each valid session, check which files exist
+            for session_id in valid_sessions:
+                files = {}
+
+                for suffix, file_type in suffixes.items():
+                    search_dir = path_config.get(file_type, self.root)
+                    expected_filename = f"{session_id}_{suffix}"
+
+                    # Use cached file list if available, otherwise check directly
+                    if search_dir in dir_files:
+                        if expected_filename in dir_files[search_dir]:
+                            files[file_type] = expected_filename
+                    else:
+                        file_path = os.path.join(search_dir, expected_filename)
+                        if os.path.exists(file_path):
+                            files[file_type] = expected_filename
+
+                # Only include sessions that have at least one file
+                if files:
+                    complete = 'activity_data' in files and 'behavior_features' in files
+
+                    experiments[session_id] = {
+                        'format': 'new',
+                        'files': files,
+                        'complete': complete,
+                        'has_timelines': ('activity_timeline' in files and 'behavior_timeline' in files),
+                        'has_metadata': ('metadata' in files),
+                        'path_config': path_config
+                    }
+
+        except Exception as e:
+            print(f"Error discovering scattered experiments: {e}")
 
         return experiments
 

@@ -8,6 +8,7 @@ from typing import Dict, List, Tuple
 import os
 
 from ..config import NEW_FORMAT_SUFFIXES
+from .discovery import is_valid_session_id
 
 
 class ExperimentValidator:
@@ -41,19 +42,23 @@ class ExperimentValidator:
                 - exists: True if experiment found
                 - format: 'legacy', 'new', or '' if not found
         """
-        # Check new format first
-        activity_suffix = [suffix for suffix, file_type in NEW_FORMAT_SUFFIXES.items()
-                          if file_type == 'activity_data'][0]  # 'data.npz'
+        # Validate session ID format early (new format requires 2+ underscores)
+        valid_session_format = is_valid_session_id(experiment_name)
 
-        if path_config and 'activity_data' in path_config:
-            exp_path_new = os.path.join(path_config['activity_data'], f"{experiment_name}_{activity_suffix}")
-        else:
-            exp_path_new = os.path.join(self.root, f"{experiment_name}_{activity_suffix}")
+        # Check new format first (only if valid session ID format)
+        if valid_session_format:
+            activity_suffix = [suffix for suffix, file_type in NEW_FORMAT_SUFFIXES.items()
+                              if file_type == 'activity_data'][0]  # 'data.npz'
 
-        if os.path.exists(exp_path_new):
-            return True, 'new'
+            if path_config and 'activity_data' in path_config:
+                exp_path_new = os.path.join(path_config['activity_data'], f"{experiment_name}_{activity_suffix}")
+            else:
+                exp_path_new = os.path.join(self.root, f"{experiment_name}_{activity_suffix}")
 
-        # Check legacy format
+            if os.path.exists(exp_path_new):
+                return True, 'new'
+
+        # Check legacy format (directory-based, no session ID format requirement)
         exp_path_legacy = os.path.join(self.root, experiment_name)
         if os.path.exists(exp_path_legacy):
             return True, 'legacy'
