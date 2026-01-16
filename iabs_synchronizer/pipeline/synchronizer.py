@@ -89,7 +89,8 @@ class Synchronizer:
                                rename_dict: Optional[Dict[str, str]] = None,
                                exclude_list: Optional[List[str]] = None,
                                validate: bool = True,
-                               path_config: Optional[Dict[str, str]] = None) -> SyncResult:
+                               path_config: Optional[Dict[str, str]] = None,
+                               files: Optional[Dict[str, str]] = None) -> SyncResult:
         """
         Synchronize all data for a single experiment.
 
@@ -122,6 +123,14 @@ class Synchronizer:
                                 'behavior_timeline': '/data/timestamps',
                                 'metadata': '/data/metadata'
                             }
+            files: Optional dict of discovered filenames for each file type.
+                   Used in scattered mode where folder determines file type.
+                   Example:
+                       {
+                           'activity_data': '3DM_J19_5D_data.npz',
+                           'behavior_features': '3DM_J19_5D_features.csv',
+                           ...
+                       }
 
         Returns:
             SyncResult: Object containing aligned_data dict and logs
@@ -167,7 +176,8 @@ class Synchronizer:
             root=self.root,
             data_pieces=self.data_pieces,
             prefer_new_format=True,
-            path_config=path_config
+            path_config=path_config,
+            files=files
         )
 
         # Phase 2: Filter data
@@ -281,6 +291,9 @@ class Synchronizer:
         results = {}
         failed = []
 
+        # Extract discovered_files from kwargs (used in scattered mode)
+        discovered_files = kwargs.pop('discovered_files', None)
+
         try:
             from tqdm import tqdm
             iterator = tqdm(experiment_list, desc="Synchronizing experiments")
@@ -290,7 +303,9 @@ class Synchronizer:
 
         for exp_name in iterator:
             try:
-                result = self.synchronize_experiment(exp_name, **kwargs)
+                # Get discovered files for this experiment (if available)
+                exp_files = discovered_files.get(exp_name) if discovered_files else None
+                result = self.synchronize_experiment(exp_name, files=exp_files, **kwargs)
                 results[exp_name] = result
 
                 # Save if output directory specified
@@ -502,10 +517,16 @@ class Synchronizer:
         print()
 
         # Process experiments using synchronize_batch
+        # Pass discovered files for each experiment (used in scattered mode)
         experiment_names = list(experiments_to_process.keys())
+        discovered_files = {
+            name: info.get('files', {})
+            for name, info in experiments_to_process.items()
+        }
         results = self.synchronize_batch(
             experiment_names,
             output_dir=output_dir,
+            discovered_files=discovered_files,
             **kwargs
         )
 

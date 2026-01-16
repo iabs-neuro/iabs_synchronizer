@@ -686,7 +686,8 @@ def _convert_to_legacy_format(arrays: Dict[str, np.ndarray], n_neurons: int,
     return extracted_info
 
 
-def read_new_format(expname: str, root: str = '.', path_config: Optional[Dict[str, str]] = None) -> Optional[Tuple[Dict, str, Dict]]:
+def read_new_format(expname: str, root: str = '.', path_config: Optional[Dict[str, str]] = None,
+                    files: Optional[Dict[str, str]] = None) -> Optional[Tuple[Dict, str, Dict]]:
     """
     Load data from new standardized format.
 
@@ -709,6 +710,14 @@ def read_new_format(expname: str, root: str = '.', path_config: Optional[Dict[st
                 'metadata': '/path/to/metadata'
             }
             If a key is missing, falls back to 'root'
+        files: Optional dict of discovered filenames for each file type:
+            {
+                'activity_data': 'actual_filename.npz',
+                'behavior_features': 'actual_filename.csv',
+                ...
+            }
+            If provided, uses these filenames instead of constructing from expname + suffix.
+            This is used in scattered mode where folder determines file type.
 
     Returns:
         tuple: (extracted_info, load_log, metadata) or None if format not found
@@ -720,13 +729,23 @@ def read_new_format(expname: str, root: str = '.', path_config: Optional[Dict[st
         ValueError: If activity arrays have mismatched shapes
         Warning: If timeline-derived FPS differs from metadata FPS
     """
+    from ..config import NEW_FORMAT_SUFFIXES
+
     # Build paths for each file type
     if path_config is None:
         path_config = {}
 
+    # Mapping from file_type to default suffix (for constructing filenames)
+    suffix_by_type = {v: k for k, v in NEW_FORMAT_SUFFIXES.items()}
+
     # Helper to get path for a specific file type
-    def get_path(file_type: str, filename: str) -> str:
+    def get_path(file_type: str, default_filename: str) -> str:
         base_dir = path_config.get(file_type, root)
+        # Use discovered filename if available, otherwise use default
+        if files and file_type in files:
+            filename = files[file_type]
+        else:
+            filename = default_filename
         return os.path.join(base_dir, filename)
 
     # Check if new format exists (check primary file)
@@ -788,7 +807,8 @@ def read_new_format(expname: str, root: str = '.', path_config: Optional[Dict[st
 
 
 def read_all_data(expname: str, root: str = '/content', data_pieces: Optional[List[str]] = None,
-                  prefer_new_format: bool = True, path_config: Optional[Dict[str, str]] = None) -> Tuple[List[str], Dict, List[str], Dict]:
+                  prefer_new_format: bool = True, path_config: Optional[Dict[str, str]] = None,
+                  files: Optional[Dict[str, str]] = None) -> Tuple[List[str], Dict, List[str], Dict]:
     """
     Load and analyze all data pieces for an experiment.
 
@@ -811,6 +831,13 @@ def read_all_data(expname: str, root: str = '/content', data_pieces: Optional[Li
                 'behavior_timeline': '/path/to/timestamps',
                 'metadata': '/path/to/metadata'
             }
+        files: Optional dict of discovered filenames for each file type (new format only):
+            {
+                'activity_data': 'actual_filename.npz',
+                'behavior_features': 'actual_filename.csv',
+                ...
+            }
+            If provided, uses these filenames instead of constructing from expname + suffix.
 
     Returns:
         tuple: (active_data_pieces, extracted_info, load_log, metadata) where:
@@ -822,7 +849,7 @@ def read_all_data(expname: str, root: str = '/content', data_pieces: Optional[Li
     """
     # Try new format first if preferred
     if prefer_new_format:
-        result = read_new_format(expname, root, path_config=path_config)
+        result = read_new_format(expname, root, path_config=path_config, files=files)
         if result is not None:
             extracted_info, load_log, metadata = result
             active_data_pieces = list(extracted_info.keys())
