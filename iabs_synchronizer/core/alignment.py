@@ -117,6 +117,56 @@ def _trim_to_temporal_overlap(data: np.ndarray,
     return trimmed_data, trimmed_timeline
 
 
+def _calculate_global_temporal_overlap(
+    behavioral_features: List[Dict[str, Any]],
+    target_timeline: np.ndarray
+) -> Tuple[float, float]:
+    """
+    Calculate global temporal overlap across all behavioral features and calcium.
+
+    Returns the intersection of all timeline ranges - the time period where
+    ALL features AND calcium have data.
+
+    Args:
+        behavioral_features: List of feature dicts with 'timeline' keys
+        target_timeline: Calcium timeline array
+
+    Returns:
+        (global_min, global_max): Tuple defining common overlap region
+
+    Raises:
+        ValueError: If no global overlap exists (no common time period)
+
+    Example:
+        >>> # Calcium: [0, 100], Feature A: [10, 90], Feature B: [20, 95]
+        >>> global_overlap = _calculate_global_temporal_overlap(...)
+        >>> print(global_overlap)
+        (20.0, 90.0)  # Intersection of all ranges
+    """
+    # Start with calcium timeline bounds
+    global_min = float(np.min(target_timeline))
+    global_max = float(np.max(target_timeline))
+
+    # Narrow to intersection with each feature's timeline
+    for feature_dict in behavioral_features:
+        if feature_dict.get('timeline') is not None:
+            feature_min = float(np.min(feature_dict['timeline']))
+            feature_max = float(np.max(feature_dict['timeline']))
+
+            # Update global bounds to intersection
+            global_min = max(global_min, feature_min)
+            global_max = min(global_max, feature_max)
+
+    # Check if any overlap exists
+    if global_min >= global_max:
+        raise ValueError(
+            f"No global temporal overlap found. "
+            f"Calcium and behavioral features have no common time period."
+        )
+
+    return (global_min, global_max)
+
+
 def length_match_different_fps(num1: int, num2: int, target_fps: Optional[int] = None, allowed_fps: Optional[list] = None) -> Tuple[Fraction, bool]:
     """
     Detect if two different lengths are related by an FPS ratio.
@@ -572,11 +622,64 @@ def align_all_data(filtered_data: Dict[str, Any],
         # Get list of active data pieces (those with data)
         active_data_pieces = [dp for dp, data in filtered_data.items() if data is not None and len(data) > 0]
 
+        # Calculate global temporal overlap for features with timelines
+        if target_timeline is not None:
+            # Collect all behavioral features that have timelines
+            features_with_timelines = []
+            for dp in active_data_pieces:
+                if dp not in neuro_data_parts:
+                    for tsdata in filtered_data[dp]:
+                        if tsdata.get('timeline') is not None:
+                            features_with_timelines.append(tsdata)
+
+            # Calculate global overlap and create common target timeline
+            if features_with_timelines:
+                try:
+                    global_min, global_max = _calculate_global_temporal_overlap(
+                        features_with_timelines,
+                        target_timeline
+                    )
+
+                    # Trim calcium timeline to global overlap
+                    global_mask = (target_timeline >= global_min) & (target_timeline <= global_max)
+                    common_target_timeline = target_timeline[global_mask]
+                    common_target_length = len(common_target_timeline)
+
+                    # Log data loss if significant
+                    original_duration = np.max(target_timeline) - np.min(target_timeline)
+                    overlap_duration = global_max - global_min
+                    data_loss_pct = 100 * (1 - overlap_duration / original_duration)
+
+                    if data_loss_pct > 0.1:  # Log even minor trimming for transparency
+                        print(f'[GLOBAL OVERLAP] Using common time range [{global_min:.2f}s, {global_max:.2f}s]')
+                        if data_loss_pct > 5.0:
+                            print(f'[GLOBAL OVERLAP] Trimmed {data_loss_pct:.1f}% of calcium timeline '
+                                  f'to ensure all features have data')
+
+                except ValueError as e:
+                    # No global overlap - this is a critical error
+                    print(f'[ERROR] {str(e)}')
+                    raise
+            else:
+                # No features with timelines - use full calcium timeline
+                common_target_timeline = target_timeline
+                common_target_length = target_length
+        else:
+            common_target_timeline = target_timeline
+            common_target_length = target_length
+
         for dp in active_data_pieces:
-            # Neuronal data: pass through unchanged (already aligned to calcium timeline)
+            # Neuronal data: trim to global overlap if applied
             if dp in neuro_data_parts:
                 if filtered_data[dp] is not None:
-                    aligned_data[dp] = filtered_data[dp][dp]
+                    neuro_data = filtered_data[dp][dp]  # Shape: (neurons, timepoints)
+
+                    # Trim to global overlap if calculated
+                    if common_target_length != target_length:
+                        # Trim neuronal data to match global overlap
+                        aligned_data[dp] = neuro_data[:, :common_target_length]
+                    else:
+                        aligned_data[dp] = neuro_data
                 continue  # Situation where spike series have different length/fps from calcium is not currently implemented
 
             print(f'Processing {dp}...')
@@ -588,12 +691,12 @@ def align_all_data(filtered_data: Dict[str, Any],
                 ts = tsdata[name]
                 timeline = tsdata['timeline']
 
-                # Select alignment mode using extracted logic
+                # Select alignment mode (use COMMON target length and timeline)
                 mode, reason = _select_alignment_mode(
                     ts_length=len(ts),
-                    target_length=target_length,
+                    target_length=common_target_length,
                     timeline=timeline,
-                    target_timeline=target_timeline,
+                    target_timeline=common_target_timeline,
                     force_pathway=force_pathway,
                     feature_name=name
                 )
@@ -601,8 +704,8 @@ def align_all_data(filtered_data: Dict[str, Any],
                 # Log the decision
                 print(f'Feature "{name}": {reason}, using "{mode}" mode')
 
-                # Perform alignment
-                ats = align_data(ts, target_length, timeline, target_timeline, mode=mode)
+                # Perform alignment (use COMMON target length and timeline)
+                ats = align_data(ts, common_target_length, timeline, common_target_timeline, mode=mode)
 
                 if ats is not None:
                     aligned_data[name] = ats
