@@ -178,7 +178,7 @@ class Synchronizer:
         )
 
         # Phase 3: Align data
-        aligned_data, align_log = align_all_data(
+        aligned_data, align_log, mode_stats = align_all_data(
             filtered_info,
             force_pathway=force_mode,
             config=self.config
@@ -209,7 +209,8 @@ class Synchronizer:
             'source_format': 'new' if source_metadata else 'legacy',
             'alignment_mode': force_mode if force_mode else 'auto',
             'n_features': len(aligned_data),
-            'validation_passed': validation['valid'] if validate else None
+            'validation_passed': validation['valid'] if validate else None,
+            'mode_stats': mode_stats  # Track how many features used each alignment mode
         }
 
         # Add timepoints if available
@@ -303,6 +304,15 @@ class Synchronizer:
                 print(f"Failed to process {exp_name}: {e}")
                 failed.append((exp_name, str(e)))
 
+        # Aggregate mode statistics across experiments
+        aggregated_mode_stats = {}  # mode -> count of experiments using this mode
+        for exp_name, result in results.items():
+            exp_modes = result.sync_info.get('mode_stats', {})
+            for mode in exp_modes.keys():
+                if mode not in aggregated_mode_stats:
+                    aggregated_mode_stats[mode] = 0
+                aggregated_mode_stats[mode] += 1
+
         # Summary
         print(f"\nBatch processing complete:")
         print(f"  Success: {len(results)}/{len(experiment_list)}")
@@ -310,6 +320,12 @@ class Synchronizer:
             print(f"  Failed: {len(failed)}")
             for exp_name, error in failed:
                 print(f"    - {exp_name}: {error}")
+
+        # Report alignment mode statistics
+        if aggregated_mode_stats:
+            print(f"\n  Alignment methods used:")
+            for mode, count in sorted(aggregated_mode_stats.items(), key=lambda x: -x[1]):
+                print(f"    - {mode}: {count} experiment(s)")
 
         return results
 

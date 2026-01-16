@@ -135,8 +135,9 @@ class TestAutomaticModeSelection:
         }
 
         # Force cast_to_ca mode should work
-        aligned_data, align_log = align_all_data(filtered_data, force_pathway='cast_to_ca')
+        aligned_data, align_log, mode_stats = align_all_data(filtered_data, force_pathway='cast_to_ca')
 
         # Check that speed was aligned (key might be lowercase)
         feature_keys = {k.lower() for k in aligned_data.keys()}
         assert 'speed' in feature_keys
+        assert 'cast_to_ca' in mode_stats

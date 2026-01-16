@@ -571,7 +571,7 @@ def _select_alignment_mode(
 
 def align_all_data(filtered_data: Dict[str, Any],
                    force_pathway: Optional[str] = None,
-                   config: Optional[SyncConfig] = None) -> Tuple[Dict[str, np.ndarray], List[str]]:
+                   config: Optional[SyncConfig] = None) -> Tuple[Dict[str, np.ndarray], List[str], Dict[str, int]]:
     """
     Orchestrate synchronization of all data pieces to calcium reference timeline.
 
@@ -596,9 +596,11 @@ def align_all_data(filtered_data: Dict[str, Any],
         config: Optional SyncConfig object with custom settings
 
     Returns:
-        tuple: (aligned_data, align_log) where:
+        tuple: (aligned_data, align_log, mode_stats) where:
             - aligned_data: Flat dictionary mapping feature names to aligned arrays
             - align_log: List of log messages from alignment process
+            - mode_stats: Dictionary counting features aligned with each mode
+                          Format: {'2 timelines': 5, 'cast_to_ca': 3, ...}
 
     Raises:
         KeyError: If 'Calcium' data is not found in filtered_data
@@ -615,6 +617,7 @@ def align_all_data(filtered_data: Dict[str, Any],
         target_length = filtered_data['Calcium']['Calcium'].shape[1]
 
         aligned_data = {}
+        mode_stats = {}  # Track how many features used each alignment mode
 
         if target_timeline is None:
             print('Processing without calcium data timeline...')
@@ -704,10 +707,13 @@ def align_all_data(filtered_data: Dict[str, Any],
                 # Log the decision
                 print(f'Feature "{name}": {reason}, using "{mode}" mode')
 
+                # Track mode statistics
+                mode_stats[mode] = mode_stats.get(mode, 0) + 1
+
                 # Perform alignment (use COMMON target length and timeline)
                 ats = align_data(ts, common_target_length, timeline, common_target_timeline, mode=mode)
 
                 if ats is not None:
                     aligned_data[name] = ats
 
-    return aligned_data, align_log.getvalue().split('\n')
+    return aligned_data, align_log.getvalue().split('\n'), mode_stats

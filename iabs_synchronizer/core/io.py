@@ -448,7 +448,7 @@ def _load_activity_data_new_format(expname: str, get_path_func, log_lines: List[
 
 
 def _load_activity_timeline_new_format(expname: str, get_path_func, n_frames: int,
-                                       log_lines: List[str]) -> Optional[np.ndarray]:
+                                       log_lines: List[str]) -> Tuple[Optional[np.ndarray], Optional[float]]:
     """
     Load and convert activity timeline from new format.
 
@@ -459,16 +459,20 @@ def _load_activity_timeline_new_format(expname: str, get_path_func, n_frames: in
         log_lines: List to append log messages
 
     Returns:
-        Activity timeline array or None if missing
+        tuple: (activity_timeline, estimated_fps)
+            - Activity timeline array or None if missing
+            - Estimated FPS from timeline or None if cannot be calculated
 
     Raises:
         ValueError: If timeline length doesn't match n_frames
     """
+    from ..utils.gap_detection import calculate_robust_fps
+
     mini_ts_path = get_path_func('activity_timeline', f"{expname}_Mini_TS.csv")
 
     if not os.path.exists(mini_ts_path):
         log_lines.append("WARNING: Activity timeline missing")
-        return None
+        return None, None
 
     activity_timeline = pd.read_csv(mini_ts_path, header=None).values.flatten()
 
@@ -490,11 +494,20 @@ def _load_activity_timeline_new_format(expname: str, get_path_func, n_frames: in
     activity_timeline, log_msg = _convert_timeline_to_seconds(activity_timeline, "Activity timeline")
     log_lines.append(log_msg)
 
-    return activity_timeline
+    # Calculate estimated FPS from timeline
+    estimated_fps = None
+    try:
+        fps_float, _ = calculate_robust_fps(activity_timeline, allowed_fps=ALLOWED_FPS)
+        estimated_fps = fps_float
+        log_lines.append(f"Activity estimated FPS: {fps_float:.2f}")
+    except Exception:
+        pass  # FPS estimation failed, continue without it
+
+    return activity_timeline, estimated_fps
 
 
 def _load_behavior_data_new_format(expname: str, get_path_func,
-                                    log_lines: List[str]) -> Tuple[pd.DataFrame, Optional[np.ndarray]]:
+                                    log_lines: List[str]) -> Tuple[pd.DataFrame, Optional[np.ndarray], Optional[float]]:
     """
     Load behavior features and timeline from new format.
 
@@ -504,11 +517,16 @@ def _load_behavior_data_new_format(expname: str, get_path_func,
         log_lines: List to append log messages
 
     Returns:
-        tuple: (behavior_df, behavior_timeline)
+        tuple: (behavior_df, behavior_timeline, estimated_fps)
+            - behavior_df: DataFrame with behavior features
+            - behavior_timeline: Timeline array or None if missing
+            - estimated_fps: Estimated FPS from timeline or None
 
     Raises:
         ValueError: If timeline length doesn't match features
     """
+    from ..utils.gap_detection import calculate_robust_fps
+
     features_path = get_path_func('behavior_features', f"{expname}_Features.csv")
     behavior_df = pd.read_csv(features_path)
     n_behavior_frames = len(behavior_df)
@@ -517,6 +535,7 @@ def _load_behavior_data_new_format(expname: str, get_path_func,
     # Load behavior timeline
     vt_ts_path = get_path_func('behavior_timeline', f"{expname}_VT_TS.csv")
     behavior_timeline = None
+    estimated_fps = None
 
     if os.path.exists(vt_ts_path):
         behavior_timeline = pd.read_csv(vt_ts_path, header=None).values.flatten()
@@ -538,10 +557,18 @@ def _load_behavior_data_new_format(expname: str, get_path_func,
         # Convert to seconds if needed
         behavior_timeline, log_msg = _convert_timeline_to_seconds(behavior_timeline, "Behavior timeline")
         log_lines.append(log_msg)
+
+        # Calculate estimated FPS from timeline
+        try:
+            fps_float, _ = calculate_robust_fps(behavior_timeline, allowed_fps=ALLOWED_FPS)
+            estimated_fps = fps_float
+            log_lines.append(f"Behavior estimated FPS: {fps_float:.2f}")
+        except Exception:
+            pass  # FPS estimation failed, continue without it
     else:
         log_lines.append("WARNING: Behavior timeline missing")
 
-    return behavior_df, behavior_timeline
+    return behavior_df, behavior_timeline, estimated_fps
 
 
 def _load_metadata_new_format(expname: str, get_path_func, log_lines: List[str]) -> Dict:
@@ -714,10 +741,10 @@ def read_new_format(expname: str, root: str = '.', path_config: Optional[Dict[st
     arrays, n_neurons, n_frames = _load_activity_data_new_format(expname, get_path, log_lines)
 
     # 2. Load activity timeline using helper
-    activity_timeline = _load_activity_timeline_new_format(expname, get_path, n_frames, log_lines)
+    activity_timeline, activity_fps = _load_activity_timeline_new_format(expname, get_path, n_frames, log_lines)
 
     # 3. Load behavior data using helper
-    behavior_df, behavior_timeline = _load_behavior_data_new_format(expname, get_path, log_lines)
+    behavior_df, behavior_timeline, behavior_fps = _load_behavior_data_new_format(expname, get_path, log_lines)
 
     # 4. Check timeline consistency
     activity_timeline_present = activity_timeline is not None

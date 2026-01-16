@@ -83,10 +83,11 @@ class TestMissingBehaviorTimeline:
         }
 
         # Force cast_to_ca mode should work
-        aligned_data, align_log = align_all_data(filtered_data, force_pathway='cast_to_ca')
+        aligned_data, align_log, mode_stats = align_all_data(filtered_data, force_pathway='cast_to_ca')
 
         feature_keys = {k.lower() for k in aligned_data.keys()}
         assert 'speed' in feature_keys
+        assert 'cast_to_ca' in mode_stats
 
 
 class TestMissingCalciumTimeline:
@@ -116,7 +117,7 @@ class TestMissingCalciumTimeline:
             ]
         }
 
-        aligned_data, align_log = align_all_data(filtered_data, force_pathway=None)
+        aligned_data, align_log, mode_stats = align_all_data(filtered_data, force_pathway=None)
 
         feature_keys = {k.lower() for k in aligned_data.keys()}
         assert 'speed' in feature_keys
@@ -160,9 +161,10 @@ class TestBothTimelinessMissing:
         }
 
         # Should succeed with cast_to_ca fallback (synthetic timelines created)
-        aligned_data, log = align_all_data(filtered_data, force_pathway=None)
+        aligned_data, log, mode_stats = align_all_data(filtered_data, force_pathway=None)
         assert 'Speed' in aligned_data
         assert len(aligned_data['Speed']) == 100
+        assert 'cast_to_ca' in mode_stats
 
     def test_both_missing_forced_crop_mode(self):
         """Forced crop mode should work when both timelines missing."""
@@ -185,10 +187,11 @@ class TestBothTimelinessMissing:
         }
 
         # Force crop mode should work
-        aligned_data, align_log = align_all_data(filtered_data, force_pathway='crop')
+        aligned_data, align_log, mode_stats = align_all_data(filtered_data, force_pathway='crop')
 
         feature_keys = {k.lower() for k in aligned_data.keys()}
         assert 'speed' in feature_keys
         # Speed should be cropped to 100 points
         speed_key = [k for k in aligned_data.keys() if k.lower() == 'speed'][0]
         assert len(aligned_data[speed_key]) == 100
+        assert 'crop' in mode_stats

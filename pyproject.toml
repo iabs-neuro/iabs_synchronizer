@@ -44,9 +44,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-gdrive = [
-    "driada>=1.0.0",  # Google Drive integration
-]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=3.0.0",
@@ -54,8 +51,8 @@ dev = [
     "flake8>=4.0.0",
     "mypy>=0.950",
 ]
-all = [
-    "driada>=1.0.0",
+full = [
+    "driada>=0.7.0",  # Data I/O utilities
     "tqdm>=4.60.0",  # Progress bars for batch processing
 ]
 
