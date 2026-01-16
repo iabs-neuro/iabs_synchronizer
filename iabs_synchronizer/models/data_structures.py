@@ -255,6 +255,10 @@ class SyncResult:
             Timepoints: 17855
             Features: 12
 
+            Initial Data:
+              Activity: 17855 frames @ 30.0 FPS
+              Behavior: 53568 frames @ 90.0 FPS
+
             Aligned Data:
               Calcium          (251, 17855)    [neuronal]
               Spikes           (251, 17855)    [neuronal]
@@ -291,6 +295,49 @@ class SyncResult:
 
         # Feature count
         lines.append(f"Features: {len(self.aligned_data)}")
+
+        # Parse initial data lengths from read_log
+        activity_frames = None
+        activity_fps = None
+        behavior_frames = None
+        behavior_fps = None
+
+        for log_line in self.read_log:
+            # Parse: "Activity: {n_neurons} neurons x {n_frames} frames"
+            if 'Activity:' in log_line and 'neurons x' in log_line:
+                try:
+                    activity_frames = int(log_line.split('x')[1].split('frames')[0].strip())
+                except (IndexError, ValueError):
+                    pass
+            # Parse: "Behavior: {n_frames} frames, {n_features} features"
+            elif 'Behavior:' in log_line and 'frames,' in log_line:
+                try:
+                    behavior_frames = int(log_line.split('Behavior:')[1].split('frames')[0].strip())
+                except (IndexError, ValueError):
+                    pass
+            # Parse: "Activity estimated FPS: {fps}"
+            elif 'Activity estimated FPS:' in log_line:
+                try:
+                    activity_fps = float(log_line.split(':')[1].strip())
+                except (IndexError, ValueError):
+                    pass
+            # Parse: "Behavior estimated FPS: {fps}"
+            elif 'Behavior estimated FPS:' in log_line:
+                try:
+                    behavior_fps = float(log_line.split(':')[1].strip())
+                except (IndexError, ValueError):
+                    pass
+
+        # Show initial data lengths
+        if activity_frames or behavior_frames:
+            lines.append("")
+            lines.append("Initial Data:")
+            if activity_frames:
+                fps_str = f" @ {activity_fps:.1f} FPS" if activity_fps else ""
+                lines.append(f"  Activity: {activity_frames} frames{fps_str}")
+            if behavior_frames:
+                fps_str = f" @ {behavior_fps:.1f} FPS" if behavior_fps else ""
+                lines.append(f"  Behavior: {behavior_frames} frames{fps_str}")
 
         # Parse alignment modes from align_log
         feature_modes = {}
