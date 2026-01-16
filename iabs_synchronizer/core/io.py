@@ -471,10 +471,19 @@ def _load_activity_timeline_new_format(expname: str, get_path_func, n_frames: in
         return None
 
     activity_timeline = pd.read_csv(mini_ts_path, header=None).values.flatten()
-    if len(activity_timeline) != n_frames:
+
+    # Handle common case: N+1 timestamps for N frames (includes end timestamp)
+    if len(activity_timeline) == n_frames + 1:
+        log_lines.append(
+            f"[INFO] Activity timeline has {n_frames + 1} timestamps for {n_frames} frames. "
+            f"Trimming last timestamp."
+        )
+        activity_timeline = activity_timeline[:-1]  # Remove last timestamp
+    elif len(activity_timeline) != n_frames:
         raise ValueError(
             f"Activity timeline length ({len(activity_timeline)}) "
-            f"doesn't match activity data ({n_frames})"
+            f"doesn't match activity data ({n_frames}). "
+            f"Expected {n_frames} or {n_frames + 1} timestamps."
         )
 
     # Convert to seconds if needed
@@ -511,10 +520,19 @@ def _load_behavior_data_new_format(expname: str, get_path_func,
 
     if os.path.exists(vt_ts_path):
         behavior_timeline = pd.read_csv(vt_ts_path, header=None).values.flatten()
-        if len(behavior_timeline) != n_behavior_frames:
+
+        # Handle common case: N+1 timestamps for N frames (includes end timestamp)
+        if len(behavior_timeline) == n_behavior_frames + 1:
+            log_lines.append(
+                f"[INFO] Behavior timeline has {n_behavior_frames + 1} timestamps for {n_behavior_frames} frames. "
+                f"Trimming last timestamp."
+            )
+            behavior_timeline = behavior_timeline[:-1]  # Remove last timestamp
+        elif len(behavior_timeline) != n_behavior_frames:
             raise ValueError(
                 f"Behavior timeline length ({len(behavior_timeline)}) "
-                f"doesn't match Features.csv ({n_behavior_frames})"
+                f"doesn't match Features.csv ({n_behavior_frames}). "
+                f"Expected {n_behavior_frames} or {n_behavior_frames + 1} timestamps."
             )
 
         # Convert to seconds if needed
