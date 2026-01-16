@@ -228,6 +228,137 @@ class SyncResult:
 
         return '\n'.join(log_parts)
 
+    def summary(self, print_output: bool = True) -> str:
+        """
+        Generate a human-readable summary of the synchronization result.
+
+        Provides an overview of:
+        - Experiment name and format
+        - Number of timepoints and features
+        - Shape of each aligned array with alignment mode used
+        - Aggregated alignment mode statistics
+        - Any warnings from the logs
+
+        Args:
+            print_output: If True, print the summary. If False, only return it.
+
+        Returns:
+            Formatted summary string
+
+        Example:
+            >>> result.summary()
+            ═══════════════════════════════════════════════════════
+            SYNCHRONIZATION SUMMARY
+            ═══════════════════════════════════════════════════════
+            Experiment: RT_A04_S01
+            Format: new
+            Timepoints: 17855
+            Features: 12
+
+            Aligned Data:
+              Calcium          (251, 17855)    [neuronal]
+              Spikes           (251, 17855)    [neuronal]
+              Speed            (17855,)        [2 timelines]
+              X                (17855,)        [2 timelines]
+              ...
+
+            Alignment Modes:
+              2 timelines: 8 features
+              cast_to_ca: 2 features
+
+            Warnings: None
+            ═══════════════════════════════════════════════════════
+        """
+        lines = []
+        sep = "═" * 55
+
+        lines.append(sep)
+        lines.append("SYNCHRONIZATION SUMMARY")
+        lines.append(sep)
+
+        # Experiment info
+        exp_name = self.sync_info.get('experiment_name', 'Unknown')
+        src_format = self.sync_info.get('source_format', 'Unknown')
+        lines.append(f"Experiment: {exp_name}")
+        lines.append(f"Format: {src_format}")
+
+        # Timepoints
+        try:
+            n_timepoints = self.get_timepoints()
+            lines.append(f"Timepoints: {n_timepoints}")
+        except ValueError as e:
+            lines.append(f"Timepoints: ERROR - {e}")
+
+        # Feature count
+        lines.append(f"Features: {len(self.aligned_data)}")
+
+        # Parse alignment modes from align_log
+        feature_modes = {}
+        for log_line in self.align_log:
+            if 'using "' in log_line and 'Feature "' in log_line:
+                try:
+                    # Parse: Feature "name": reason, using "mode" mode
+                    feature_name = log_line.split('Feature "')[1].split('"')[0]
+                    mode = log_line.split('using "')[1].split('"')[0]
+                    feature_modes[feature_name] = mode
+                except (IndexError, ValueError):
+                    pass
+
+        # Aligned data shapes
+        lines.append("")
+        lines.append("Aligned Data:")
+
+        # Determine neuronal vs behavioral features
+        neuro_keys = {'Calcium', 'Spikes', 'Reconstructions'}
+
+        for key, arr in sorted(self.aligned_data.items()):
+            shape_str = str(arr.shape)
+            if key in neuro_keys:
+                mode_str = "[neuronal]"
+            else:
+                mode = feature_modes.get(key, "unknown")
+                mode_str = f"[{mode}]"
+
+            lines.append(f"  {key:<20} {shape_str:<18} {mode_str}")
+
+        # Mode statistics
+        mode_stats = self.sync_info.get('mode_stats', {})
+        if mode_stats:
+            lines.append("")
+            lines.append("Alignment Modes:")
+            for mode, count in sorted(mode_stats.items(), key=lambda x: -x[1]):
+                lines.append(f"  {mode}: {count} feature(s)")
+
+        # Warnings
+        warnings = []
+        all_logs = self.read_log + self.filter_log + self.align_log
+        for log_line in all_logs:
+            log_lower = log_line.lower()
+            if 'warning' in log_lower or 'error' in log_lower:
+                # Clean up the warning text
+                clean_line = log_line.strip()
+                if clean_line and clean_line not in warnings:
+                    warnings.append(clean_line)
+
+        lines.append("")
+        if warnings:
+            lines.append(f"Warnings ({len(warnings)}):")
+            for w in warnings[:5]:  # Show first 5 warnings
+                lines.append(f"  - {w[:70]}{'...' if len(w) > 70 else ''}")
+            if len(warnings) > 5:
+                lines.append(f"  ... and {len(warnings) - 5} more")
+        else:
+            lines.append("Warnings: None")
+
+        lines.append(sep)
+
+        summary_str = '\n'.join(lines)
+
+        if print_output:
+            print(summary_str)
+
+        return summary_str
+
     def __repr__(self) -> str:
         n_features = len(self.aligned_data)
         try:
