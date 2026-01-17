@@ -247,12 +247,20 @@ class ExperimentDiscovery:
 
             # Step 2: Build experiment dict from collected files
             for session_id, files in session_files.items():
-                complete = 'activity_data' in files and 'behavior_features' in files
+                # Check for missing required files
+                missing = []
+                if 'activity_data' not in files:
+                    missing.append(f"activity_data (not found in {self.root})")
+                if 'behavior_features' not in files:
+                    missing.append(f"behavior_features (not found in {self.root})")
+
+                complete = len(missing) == 0
 
                 experiments[session_id] = {
                     'format': 'new',
                     'files': files,
                     'complete': complete,
+                    'missing': missing if missing else None,
                     'has_timelines': ('activity_timeline' in files and 'behavior_timeline' in files),
                     'has_metadata': ('metadata' in files),
                     'path': self.root
@@ -310,16 +318,42 @@ class ExperimentDiscovery:
                 session_files[session_id][file_type] = filename
 
         # Step 2: Build experiment dict from collected files
+        # Track which directories in path_config don't exist
+        missing_dirs = {
+            file_type: directory
+            for file_type, directory in path_config.items()
+            if not os.path.isdir(directory)
+        }
+
         for session_id, files in session_files.items():
             if not files:
                 continue
 
-            complete = 'activity_data' in files and 'behavior_features' in files
+            # Check for missing required files
+            missing = []
+            if 'activity_data' not in files:
+                if 'activity_data' in missing_dirs:
+                    missing.append(f"activity_data (directory not found: {missing_dirs['activity_data']})")
+                elif 'activity_data' in path_config:
+                    missing.append(f"activity_data (not found in {path_config['activity_data']})")
+                else:
+                    missing.append("activity_data (not in path_config)")
+
+            if 'behavior_features' not in files:
+                if 'behavior_features' in missing_dirs:
+                    missing.append(f"behavior_features (directory not found: {missing_dirs['behavior_features']})")
+                elif 'behavior_features' in path_config:
+                    missing.append(f"behavior_features (not found in {path_config['behavior_features']})")
+                else:
+                    missing.append("behavior_features (not in path_config)")
+
+            complete = len(missing) == 0
 
             experiments[session_id] = {
                 'format': 'new',
                 'files': files,
                 'complete': complete,
+                'missing': missing if missing else None,
                 'has_timelines': ('activity_timeline' in files and 'behavior_timeline' in files),
                 'has_metadata': ('metadata' in files),
                 'path_config': path_config
