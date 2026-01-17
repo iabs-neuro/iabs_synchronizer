@@ -492,9 +492,27 @@ class Synchronizer:
                 name: info for name, info in discovered.items()
                 if info['complete']
             }
-            incomplete = len(discovered) - len(experiments_to_process)
-            if incomplete > 0:
-                print(f"Found {len(discovered)} experiments, {incomplete} incomplete (skipping)")
+            incomplete_exps = {
+                name: info for name, info in discovered.items()
+                if not info['complete']
+            }
+            if incomplete_exps:
+                print(f"Found {len(discovered)} experiments, {len(incomplete_exps)} incomplete (skipping)")
+                # Summarize missing reasons
+                missing_summary = {}  # reason -> count
+                for name, info in incomplete_exps.items():
+                    for reason in info.get('missing', ['unknown reason']):
+                        # Normalize reason (remove specific paths for grouping)
+                        if 'directory not found' in reason:
+                            key = reason.split('(')[0].strip() + ' (directory not found)'
+                        elif 'not found in' in reason:
+                            key = reason.split('(')[0].strip() + ' (not found in configured directory)'
+                        else:
+                            key = reason
+                        missing_summary[key] = missing_summary.get(key, 0) + 1
+                print("  Incomplete reasons:")
+                for reason, count in sorted(missing_summary.items(), key=lambda x: -x[1]):
+                    print(f"    - {reason}: {count} experiment(s)")
         else:
             experiments_to_process = discovered
 
