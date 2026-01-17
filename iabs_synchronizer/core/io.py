@@ -475,19 +475,34 @@ def _load_activity_timeline_new_format(expname: str, get_path_func, n_frames: in
         return None, None
 
     activity_timeline = pd.read_csv(mini_ts_path, header=None).values.flatten()
+    timeline_len = len(activity_timeline)
 
-    # Handle common case: N+1 timestamps for N frames (includes end timestamp)
-    if len(activity_timeline) == n_frames + 1:
+    # Handle timeline length mismatches
+    if timeline_len == n_frames + 1:
+        # Common case: N+1 timestamps for N frames (includes end timestamp)
         log_lines.append(
             f"[INFO] Activity timeline has {n_frames + 1} timestamps for {n_frames} frames. "
             f"Trimming last timestamp."
         )
-        activity_timeline = activity_timeline[:-1]  # Remove last timestamp
-    elif len(activity_timeline) != n_frames:
+        activity_timeline = activity_timeline[:-1]
+    elif timeline_len > n_frames:
+        # Timeline longer than data - crop with warning
+        excess = timeline_len - n_frames
+        log_lines.append(
+            f"WARNING: Activity timeline ({timeline_len}) longer than data ({n_frames}). "
+            f"Cropping {excess} excess timestamp(s)."
+        )
+        print(
+            f"WARNING: Activity timeline ({timeline_len}) longer than data ({n_frames}). "
+            f"Cropping {excess} excess timestamp(s)."
+        )
+        activity_timeline = activity_timeline[:n_frames]
+    elif timeline_len < n_frames:
+        # Timeline shorter than data - cannot recover
         raise ValueError(
-            f"Activity timeline length ({len(activity_timeline)}) "
-            f"doesn't match activity data ({n_frames}). "
-            f"Expected {n_frames} or {n_frames + 1} timestamps."
+            f"Activity timeline length ({timeline_len}) "
+            f"shorter than activity data ({n_frames}). "
+            f"Cannot interpolate missing timestamps."
         )
 
     # Convert to seconds if needed
